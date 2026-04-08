@@ -1,0 +1,42 @@
+<launch>
+  <!-- Left DVXplorer — MASTER (serial DXA00420) -->
+  <node ns="dvxplorer_left" name="dvxplorer_ros_driver"
+        pkg="dvxplorer_ros_driver" type="dvxplorer_ros_driver" output="screen">
+    <param name="serial_number" type="str" value="DXA00420" />
+    <param name="master" value="True"/>
+    <param name="reset_timestamps_delay" value="2.0"/>
+  </node>
+
+  <!-- Right DVXplorer — SLAVE (serial DXA00247) -->
+  <node ns="dvxplorer_right" name="dvxplorer_ros_driver"
+        pkg="dvxplorer_ros_driver" type="dvxplorer_ros_driver" output="screen">
+    <param name="serial_number" type="str" value="DXA00247" />
+    <param name="master" value="False"/>
+    <remap from="reset_timestamps" to="/dvxplorer_left/reset_timestamps"/>
+  </node>
+
+  <!-- Event visualisation (red-blue rendering) -->
+  <node name="dvs_renderer_left" pkg="dvs_renderer" type="dvs_renderer">
+    <param name="display_method" value="red-blue"/>
+    <remap from="events" to="/dvxplorer_left/events"/>
+    <remap from="dvs_rendering" to="/dvs_rendering_left"/>
+  </node>
+
+  <node name="dvs_renderer_right" pkg="dvs_renderer" type="dvs_renderer">
+    <param name="display_method" value="red-blue"/>
+    <remap from="events" to="/dvxplorer_right/events"/>
+    <remap from="dvs_rendering" to="/dvs_rendering_right"/>
+  </node>
+
+  <!-- Image viewers -->
+  <node name="view_left" pkg="image_view" type="image_view" respawn="false" output="screen">
+    <remap from="image" to="/dvs_rendering_left"/>
+    <param name="autosize" value="true"/>
+  </node>
+
+  <node name="view_right" pkg="image_view" type="image_view" respawn="false" output="screen">
+    <remap from="image" to="/dvs_rendering_right"/>
+    <param name="autosize" value="true"/>
+  </node>
+
+</launch>

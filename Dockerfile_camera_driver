@@ -1,0 +1,89 @@
+FROM osrf/ros:noetic-desktop-full
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# ── System & ROS build tools ───────────────────────────────────────────────
+RUN apt-get update && apt-get install -y \
+    software-properties-common gnupg wget curl git nano \
+    python3-catkin-tools python3-osrf-pycommon \
+    python3-pip \
+    ros-noetic-camera-info-manager \
+    ros-noetic-cv-bridge \
+    ros-noetic-image-view \
+    ros-noetic-image-transport \
+    ros-noetic-image-transport-plugins \
+    libusb-1.0-0 libatomic1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── libcaer (iniVation PPA — required by dvxplorer_ros_driver) ────────────
+RUN apt-get update && apt-get install -y gnupg2 ca-certificates \
+    && apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 1D3782C07F873130548A7E822F2CC7DEE2CE4E6A \
+    && echo "deb http://ppa.launchpad.net/inivation-ppa/inivation/ubuntu focal main" \
+       > /etc/apt/sources.list.d/inivation.list \
+    && apt-get update \
+    && apt-get install -y libcaer-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── IDS / uEye stack for USB3 RGB camera ──────────────────────────────────
+RUN apt-get update && apt-get install -y \
+    libqt5core5a libqt5gui5 libqt5widgets5 libqt5multimedia5 libqt5quick5 \
+    qml-module-qtquick-window2 qml-module-qtquick2 \
+    qml-module-qtquick-dialogs qml-module-qtquick-controls \
+    qml-module-qtquick-layouts \
+    qml-module-qt-labs-settings qml-module-qt-labs-folderlistmodel \
+    libcap2 libudev1 libomp5 usbutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy required local uEye/IDS packages
+COPY docker_context/ueye-api_4.96.1.2054_amd64.deb /tmp/
+COPY docker_context/ueye-common_4.96.1.2054_amd64.deb /tmp/
+COPY docker_context/ueye-driver-usb_4.96.1.2054_amd64.deb /tmp/
+COPY docker_context/ueye-driver-eth_4.96.1.2054_amd64.deb /tmp/
+COPY docker_context/ueye-drivers_4.96.1.2054_amd64.deb /tmp/
+COPY docker_context/ids-peak-with-ueyetl-linux-x86-2.4.0.0-64.deb /tmp/ids-peak.deb
+
+# Install uEye packages — stub systemctl first to suppress daemon-reload errors
+RUN ln -sf /bin/true /usr/bin/systemctl \
+    && dpkg -i /tmp/ueye-api_4.96.1.2054_amd64.deb \
+    && dpkg -i /tmp/ueye-common_4.96.1.2054_amd64.deb \
+    && dpkg -i /tmp/ueye-driver-usb_4.96.1.2054_amd64.deb \
+    && dpkg -i /tmp/ueye-driver-eth_4.96.1.2054_amd64.deb \
+    && dpkg -i /tmp/ueye-drivers_4.96.1.2054_amd64.deb \
+    && rm /usr/bin/systemctl \
+    && ldconfig
+
+# Install IDS peak with uEye transport layer
+RUN mkdir -p /etc/udev/rules.d \
+    && dpkg -i /tmp/ids-peak.deb || apt-get -f install -y \
+    && rm -f /tmp/ids-peak.deb
+
+# Install IDS Peak Python bindings
+RUN PYVER=$(python3 -c "import sys; print('cp%d%d' % sys.version_info[:2])") \
+    && WHEEL_DIR="/usr/local/share/ids/bindings/python/wheel" \
+    && ls -l ${WHEEL_DIR} \
+    && pip3 install $(ls ${WHEEL_DIR}/ids_peak-*-${PYVER}-*.whl | head -n 1) \
+    && pip3 install $(ls ${WHEEL_DIR}/ids_peak_ipl-*-${PYVER}-*.whl | head -n 1) \
+    && pip3 install $(ls ${WHEEL_DIR}/ids_peak_afl-*-${PYVER}-*.whl | head -n 1)
+
+ENV GENICAM_GENTL64_PATH=/usr/lib/ids/cti
+
+# ── Catkin workspace ──────────────────────────────────────────────────────
+ENV WORKSPACE /catkin_ws
+RUN mkdir -p $WORKSPACE/src
+
+# Clone: catkin_simple + rpg_dvs_ros (dvxplorer_ros_driver, dvs_msgs, dvs_renderer)
+RUN cd $WORKSPACE/src \
+    && git clone https://github.com/catkin/catkin_simple.git \
+    && git clone https://github.com/uzh-rpg/rpg_dvs_ros.git
+
+# Build workspace
+RUN /bin/bash -c "source /opt/ros/noetic/setup.bash \
+    && cd $WORKSPACE \
+    && catkin_make -DCMAKE_BUILD_TYPE=Release"
+
+# ── Entrypoint ────────────────────────────────────────────────────────────
+ENTRYPOINT ["/bin/bash", "-c", "\
+/opt/ids/ueye/bin/ueyeusbd & \
+sleep 2 && \
+source /catkin_ws/devel/setup.bash && \
+exec bash"]
