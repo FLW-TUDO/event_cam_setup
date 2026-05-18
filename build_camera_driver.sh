@@ -46,22 +46,50 @@ fi
 # so the Dockerfile can use a single COPY pattern.
 NORMALISED_PEAK="${CTX}/ids-peak-${TARGET_ARCH}.deb"
 
-if [[ "$TARGET_ARCH" == "amd64" ]]; then
-    PEAK_SRC=$(ls "$CTX"/ids-peak-with-ueyetl-linux-x86-*.deb 2>/dev/null | head -n1)
-elif [[ "$TARGET_ARCH" == "arm64" ]]; then
-    PEAK_SRC=$(ls "$CTX"/ids-peak-with-ueyetl-linux-aarch64-*.deb 2>/dev/null | head -n1)
-else
-    echo "ERROR: Unsupported target architecture: ${TARGET_ARCH}"
-    exit 1
-fi
+if [[ ! -f "$NORMALISED_PEAK" ]]; then
+    # Try to find and copy the source file — use broad globs to handle IDS naming variants
+    if [[ "$TARGET_ARCH" == "amd64" ]]; then
+        PEAK_SRC=$(ls "$CTX"/ids-peak*x86*.deb "$CTX"/ids-peak*amd64*.deb 2>/dev/null | grep -v '\-arm' | head -n1)
+    elif [[ "$TARGET_ARCH" == "arm64" ]]; then
+        PEAK_SRC=$(ls "$CTX"/ids-peak*aarch64*.deb "$CTX"/ids-peak*arm64*.deb 2>/dev/null | head -n1)
+    else
+        echo "ERROR: Unsupported target architecture: ${TARGET_ARCH}"
+        exit 1
+    fi
 
-if [[ -n "$PEAK_SRC" && "$PEAK_SRC" != "$NORMALISED_PEAK" ]]; then
+    if [[ -z "$PEAK_SRC" ]]; then
+        echo ""
+        echo "Could not find IDS Peak deb for ${TARGET_ARCH} in docker_context/."
+        echo "Files found matching ids-peak*:"
+        ls "$CTX"/ids-peak*.deb 2>/dev/null || echo "  (none)"
+        echo ""
+        echo "Place the correct file in docker_context/ and re-run, or create the"
+        echo "normalised name manually:"
+        echo "  cp docker_context/<ids-peak-aarch64-file>.deb docker_context/ids-peak-${TARGET_ARCH}.deb"
+        echo ""
+        exit 1
+    fi
+
     echo "Normalising IDS Peak package: $(basename "$PEAK_SRC") → ids-peak-${TARGET_ARCH}.deb"
-    cp "$PEAK_SRC" "$NORMALISED_PEAK"
+    if ! cp "$PEAK_SRC" "$NORMALISED_PEAK" 2>/dev/null; then
+        echo ""
+        echo "WARNING: Could not copy to docker_context/ (sshfs or permissions issue)."
+        echo "Create the normalised file manually, then re-run:"
+        echo "  cp \"$(basename "$PEAK_SRC")\" docker_context/ids-peak-${TARGET_ARCH}.deb"
+        echo ""
+        exit 1
+    fi
+else
+    echo "Found: ids-peak-${TARGET_ARCH}.deb"
 fi
 
 # ── Pre-flight: auto-extract uEye .deb files from .tgz if present ────────────
-UEYE_TGZ=$(ls "$CTX"/ids-software-suite-linux-64-*.tgz 2>/dev/null | head -n1)
+# Match both amd64 (linux-64) and arm64 (linux-arm64) archive names
+if [[ "$TARGET_ARCH" == "arm64" ]]; then
+    UEYE_TGZ=$(ls "$CTX"/ids-software-suite-linux-arm64-*.tgz "$CTX"/ids-software-suite-linux-aarch64-*.tgz 2>/dev/null | head -n1)
+else
+    UEYE_TGZ=$(ls "$CTX"/ids-software-suite-linux-64-*.tgz 2>/dev/null | head -n1)
+fi
 if [[ -n "$UEYE_TGZ" ]]; then
     UEYE_DEBS=(
         "ueye-api_4.96.1.2054_${TARGET_ARCH}.deb"
@@ -166,26 +194,39 @@ if [[ "$TARGET_ARCH" != "$HOST_ARCH_NORM" ]]; then
     fi
 fi
 
+# ── Select base image per arch ────────────────────────────────────────────────
+# osrf/ros:noetic-desktop-full is amd64-only on Docker Hub.
+# For arm64 (Jetson) use ros:noetic which is a multi-arch image.
+if [[ "$TARGET_ARCH" == "arm64" ]]; then
+    BASE_IMAGE="ros:noetic"
+else
+    BASE_IMAGE="osrf/ros:noetic-desktop-full"
+fi
+
+echo "Base image: ${BASE_IMAGE}"
+echo "Pulling base image for linux/${TARGET_ARCH}..."
+docker pull --platform "linux/${TARGET_ARCH}" "${BASE_IMAGE}"
+
 # ── Build ─────────────────────────────────────────────────────────────────────
 echo ""
 echo "Building camera_driver:latest for linux/${TARGET_ARCH}..."
 
-if [[ $CROSS_COMPILE -eq 1 ]]; then
-    docker buildx build \
-        --platform "linux/${TARGET_ARCH}" \
-        --load \
-        --build-arg TARGETARCH="${TARGET_ARCH}" \
-        -f "$SCRIPT_DIR/Dockerfile_camera_driver" \
-        -t camera_driver \
-        "$SCRIPT_DIR"
-else
-    docker build \
-        --platform "linux/${TARGET_ARCH}" \
-        --build-arg TARGETARCH="${TARGET_ARCH}" \
-        -f "$SCRIPT_DIR/Dockerfile_camera_driver" \
-        -t camera_driver \
-        "$SCRIPT_DIR"
+# Use buildx for all builds — it handles platform-specific image resolution
+# more reliably than plain docker build, even for native (non-cross) builds.
+if ! docker buildx version &>/dev/null; then
+    echo "ERROR: docker buildx not available. Install Docker Engine >= 19.03 with BuildKit."
+    exit 1
 fi
+
+docker buildx build \
+    --platform "linux/${TARGET_ARCH}" \
+    --load \
+    --pull \
+    --build-arg TARGETARCH="${TARGET_ARCH}" \
+    --build-arg BASE_IMAGE="${BASE_IMAGE}" \
+    -f "$SCRIPT_DIR/Dockerfile_camera_driver" \
+    -t camera_driver \
+    "$SCRIPT_DIR"
 
 echo ""
 echo "Done. Image tagged: camera_driver:latest (linux/${TARGET_ARCH})"

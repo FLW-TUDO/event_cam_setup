@@ -1,7 +1,12 @@
 # Supports linux/amd64 and linux/arm64 (Jetson).
 # Build with build_camera_driver.sh — do not invoke docker build directly.
+#
+# Base image differs per arch:
+#   amd64 → osrf/ros:noetic-desktop-full  (pre-installed rviz/rqt, amd64-only)
+#   arm64 → ros:noetic                    (multi-arch; we install extras via apt)
 ARG TARGETARCH=amd64
-FROM osrf/ros:noetic-desktop-full
+ARG BASE_IMAGE=osrf/ros:noetic-desktop-full
+FROM ${BASE_IMAGE}
 ARG TARGETARCH
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -61,9 +66,13 @@ RUN ln -sf /bin/true /usr/bin/systemctl \
     && rm /usr/bin/systemctl \
     && ldconfig
 
-# Install IDS Peak with uEye transport layer
-RUN mkdir -p /etc/udev/rules.d \
-    && dpkg -i /tmp/ids-peak.deb || apt-get -f install -y \
+# Install IDS Peak with uEye transport layer.
+# --force-depends: all real dependencies (ueye-*, Qt, libusb) are installed
+# earlier in this Dockerfile; dpkg just can't verify them at install time,
+# causing apt-get -f to remove the package instead of keeping it.
+RUN mkdir -p /etc/udev/rules.d /etc/environment.d \
+    && touch /etc/environment.d/99ids-peak.conf \
+    && dpkg -i --force-depends /tmp/ids-peak.deb \
     && rm -f /tmp/ids-peak.deb
 
 # Install IDS Peak Python bindings
