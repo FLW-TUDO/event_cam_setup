@@ -94,6 +94,9 @@ RUN cd $WORKSPACE/src \
     && git clone https://github.com/catkin/catkin_simple.git \
     && git clone https://github.com/uzh-rpg/rpg_dvs_ros.git
 
+# IDS RGB camera ROS driver (local package — not on PyPI or GitHub)
+COPY docker_context/ids_camera_driver/ $WORKSPACE/src/ids_camera_driver/
+
 # Build workspace
 RUN /bin/bash -c "source /opt/ros/noetic/setup.bash \
     && cd $WORKSPACE \
@@ -101,7 +104,8 @@ RUN /bin/bash -c "source /opt/ros/noetic/setup.bash \
 
 # ── Entrypoint ────────────────────────────────────────────────────────────
 ENTRYPOINT ["/bin/bash", "-c", "\
-/opt/ids/ueye/bin/ueyeusbd & \
-sleep 2 && \
+mkdir -p /var/run/ueyed && \
+/opt/ids/ueye/bin/ueyeusbd -c /etc/ids/ueye/ueyeusbd.conf -P /var/run/ueyed/ueyeusbd.pid & \
+sleep 3 && \
 source /catkin_ws/devel/setup.bash && \
 exec bash"]

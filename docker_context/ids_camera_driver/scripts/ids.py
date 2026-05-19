@@ -6,7 +6,6 @@ from ids_peak_ipl import ids_peak_ipl
 import calendar
 import time
 import rospy
-from cv_bridge import CvBridge, CvBridgeError
 from sensor_msgs.msg import Image
 import cv2
 import numpy as np
@@ -14,7 +13,17 @@ import numpy as np
 m_device = None
 m_dataStream = None
 m_node_map_remote_device = None
-bridge = CvBridge()
+
+_ENCODING_CHANNELS = {"rgba8": 4, "rgb8": 3, "bgr8": 3, "bgra8": 4, "mono8": 1}
+
+def numpy_to_imgmsg(arr, encoding):
+    msg = Image()
+    msg.height, msg.width = arr.shape[:2]
+    msg.encoding = encoding
+    msg.is_bigendian = 0
+    msg.step = msg.width * _ENCODING_CHANNELS.get(encoding, arr.shape[2] if arr.ndim == 3 else 1)
+    msg.data = arr.tobytes()
+    return msg
 
 def open_camera():
     global m_device, m_node_map_remote_device
@@ -215,7 +224,7 @@ def pub_image(width,height, image_pub):
             print(ueye.UEYEIMAGEINFO.u64TimestampDevice)# Queue buffer again
             '''
             m_dataStream.QueueBuffer(buffer)
-            msg = bridge.cv2_to_imgmsg(image_numpy, "rgba8")
+            msg = numpy_to_imgmsg(image_numpy, "rgba8")
 	
             #msg = bridge.cv2_to_imgmsg(image_numpy, encoding='passthrough')
             timestamp = rospy.Time.now()
@@ -227,10 +236,7 @@ def pub_image(width,height, image_pub):
             #img = cv2.imread(path, 0)
             #print(timestamp)
             #print("time in microseconds", ts_ms)
-            try:
-                image_pub.publish(msg)
-            except CvBridgeError as e:
-                print(e)
+            image_pub.publish(msg)
             #print("checkpoint")
             index = index + 1
 
