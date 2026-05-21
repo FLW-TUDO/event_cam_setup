@@ -9,7 +9,7 @@
 
 RGB_DIR="$HOME/event/RGB_Event_cam_system"
 BAGS_DIR="${1:-$HOME/bags}"
-VICON_IP="192.168.1.221"
+VICON_IP="192.168.2.221"
 
 mkdir -p "$BAGS_DIR"
 
