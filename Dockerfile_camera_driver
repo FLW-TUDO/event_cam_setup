@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y \
     ros-noetic-image-transport \
     ros-noetic-image-transport-plugins \
     ros-noetic-vrpn-client-ros \
+    netbase \
     libusb-1.0-0 libatomic1 \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
