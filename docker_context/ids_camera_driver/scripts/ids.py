@@ -145,23 +145,19 @@ def alloc_and_announce_buffers():
     return False
 
 
-def start_acquisition():
+def start_acquisition(exposure_us):
     try:
-        #max_frame_rate = m_node_map_remote_device.FindNode("AcquisitionFrameRate").Maximum()
+        # Disable auto-exposure and set manual exposure BEFORE starting acquisition
+        m_node_map_remote_device.FindNode("ExposureAuto").SetCurrentEntry("Off")
+        m_node_map_remote_device.FindNode("ExposureTime").SetValue(float(exposure_us))
+        m_node_map_remote_device.FindNode("AcquisitionFrameRate").SetValue(25.0)
+        print(f"ExposureTime set to {exposure_us} us")
+
         m_dataStream.StartAcquisition(peak.AcquisitionStartMode_Default, peak.DataStream.INFINITE_NUMBER)
         m_node_map_remote_device.FindNode("TLParamsLocked").SetValue(1)
         m_node_map_remote_device.FindNode("AcquisitionStart").Execute()
-        m_node_map_remote_device.FindNode("AcquisitionFrameRate").SetValue(25)
-        value = m_node_map_remote_device.FindNode("ExposureTime").SetValue(25000)
-        #value = m_node_map_remote_device.FindNode("ExposureTime").Value()
-        print(value)
-        #m_node_map_remote_device.FindNode("ExposureTime").SetValue(17260)
-        #m_node_map_remote_device.FindNode("BinningSelector").SetCurrentEntry("Region0")
-        #m_node_map_remote_device.FindNode("BinningHorizontal").SetValue(2)
-        #m_node_map_remote_device.FindNode("BinningVertical").SetValue(2)
         return True
     except Exception as e:
-        # ...
         str_error = str(e)
         print(str_error)
     return False
@@ -247,13 +243,13 @@ def pub_image(width,height, image_pub):
 
 
 def main():
-    
+
     image_pub = rospy.Publisher("/rgb/image_raw",Image, queue_size=10)
     rospy.init_node('save_image', anonymous=True)
 
-    # initialize library
-    width = 640 #rospy.get_param('width')
-    height = 480 # rospy.get_param('height')
+    exposure_us = rospy.get_param('~exposure_us', 25000)
+    width  = rospy.get_param('~width',  640)
+    height = rospy.get_param('~height', 480)
     peak.Library.Initialize()
 
     if not open_camera():
@@ -276,7 +272,7 @@ def main():
         print("unable to alloc")
         sys.exit(-4)
 
-    if not start_acquisition():
+    if not start_acquisition(exposure_us):
         # error
         print("unable to start acquisition")
         sys.exit(-5)
