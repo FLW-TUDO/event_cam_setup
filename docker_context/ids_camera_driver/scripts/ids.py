@@ -147,8 +147,7 @@ def alloc_and_announce_buffers():
 
 def start_acquisition(exposure_us):
     try:
-        # Disable auto-exposure and set manual exposure BEFORE starting acquisition
-        m_node_map_remote_device.FindNode("ExposureAuto").SetCurrentEntry("Off")
+        # Set manual exposure BEFORE starting acquisition
         m_node_map_remote_device.FindNode("ExposureTime").SetValue(float(exposure_us))
         m_node_map_remote_device.FindNode("AcquisitionFrameRate").SetValue(25.0)
         print(f"ExposureTime set to {exposure_us} us")
