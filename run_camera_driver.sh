@@ -12,10 +12,19 @@ BAGS_DIR="${1:-$HOME/bags}"
 VICON_IP="192.168.2.221"
 HOST_UID="$(id -u)"
 HOST_GID="$(id -g)"
+JETSON_IP="$(hostname -I | awk '{print $1}')"
 
 mkdir -p "$BAGS_DIR"
 
-[ -n "$DISPLAY" ] && xhost +local:root
+# Kill any stale camera_driver containers (two instances fight over the USB device)
+docker ps -q --filter "ancestor=camera_driver" | xargs -r docker stop 2>/dev/null || true
+
+# X11 auth: works for both local display and SSH -X forwarding
+XAUTH=/tmp/.docker.xauth
+if [ -n "$DISPLAY" ]; then
+    xauth nlist "$DISPLAY" 2>/dev/null | sed -e 's/^..../ffff/' | xauth -f "$XAUTH" nmerge - 2>/dev/null || true
+    chmod 777 "$XAUTH" 2>/dev/null || true
+fi
 
 docker run -it --rm \
     --privileged \
@@ -23,10 +32,13 @@ docker run -it --rm \
     --ipc=host \
     -e "DISPLAY=${DISPLAY:-}" \
     -e "QT_X11_NO_MITSHM=1" \
+    -e "XAUTHORITY=${XAUTH}" \
     -e "ROS_PACKAGE_PATH=/RGB_Event_cam_system:/catkin_ws/src:/opt/ros/noetic/share" \
     -e "VICON_IP=${VICON_IP}" \
     -e "HOST_UID=${HOST_UID}" \
     -e "HOST_GID=${HOST_GID}" \
+    -e "ROS_IP=${JETSON_IP}" \
+    -v "${XAUTH}:${XAUTH}" \
     -v "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
     -v "/dev/bus/usb:/dev/bus/usb" \
     -v "/run/udev:/run/udev:ro" \

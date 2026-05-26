@@ -145,12 +145,13 @@ def alloc_and_announce_buffers():
     return False
 
 
-def start_acquisition(exposure_us):
+def start_acquisition(exposure_us, gain):
     try:
-        # Set manual exposure BEFORE starting acquisition
+        # Set manual exposure and gain BEFORE starting acquisition
         m_node_map_remote_device.FindNode("ExposureTime").SetValue(float(exposure_us))
         m_node_map_remote_device.FindNode("AcquisitionFrameRate").SetValue(25.0)
-        print(f"ExposureTime set to {exposure_us} us")
+        m_node_map_remote_device.FindNode("Gain").SetValue(float(gain))
+        print(f"ExposureTime={exposure_us}us  Gain={gain}")
 
         m_dataStream.StartAcquisition(peak.AcquisitionStartMode_Default, peak.DataStream.INFINITE_NUMBER)
         m_node_map_remote_device.FindNode("TLParamsLocked").SetValue(1)
@@ -194,9 +195,7 @@ def pub_image(width,height, image_pub):
                 buffer.Width(),
                 buffer.Height()
             )
-            #img = ids_peak_ipl.Image_CreateFromSize(ids_peak_ipl.PixelFormatName_RGBa8, 640, 480)
-            # Create IDS peak IPL image for debayering and convert it to RGBa8 format
-            image_processed = image.ConvertTo(ids_peak_ipl.PixelFormatName_RGBa8, ids_peak_ipl.ConversionMode_Fast)
+            image_processed = image.ConvertTo(ids_peak_ipl.PixelFormatName_RGB8, ids_peak_ipl.ConversionMode_HighQuality)
             image_numpy = image_processed.get_numpy_3D()
             #cv2.imshow("dist img", image_numpy)
             #cv2.waitKey()
@@ -219,7 +218,7 @@ def pub_image(width,height, image_pub):
             print(ueye.UEYEIMAGEINFO.u64TimestampDevice)# Queue buffer again
             '''
             m_dataStream.QueueBuffer(buffer)
-            msg = numpy_to_imgmsg(image_numpy, "rgba8")
+            msg = numpy_to_imgmsg(image_numpy, "rgb8")
 	
             #msg = bridge.cv2_to_imgmsg(image_numpy, encoding='passthrough')
             timestamp = rospy.Time.now()
@@ -244,9 +243,10 @@ def pub_image(width,height, image_pub):
 def main():
 
     image_pub = rospy.Publisher("/rgb/image_raw",Image, queue_size=10)
-    rospy.init_node('save_image', anonymous=True)
+    rospy.init_node('ids_cam_driver')
 
     exposure_us = rospy.get_param('~exposure_us', 25000)
+    gain        = rospy.get_param('~gain', 1.0)
     width  = rospy.get_param('~width',  640)
     height = rospy.get_param('~height', 480)
     peak.Library.Initialize()
@@ -271,7 +271,7 @@ def main():
         print("unable to alloc")
         sys.exit(-4)
 
-    if not start_acquisition(exposure_us):
+    if not start_acquisition(exposure_us, gain):
         # error
         print("unable to start acquisition")
         sys.exit(-5)
