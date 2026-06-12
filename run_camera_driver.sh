@@ -7,7 +7,7 @@
 #   roslaunch record_wp1.launch exposure_us:=5000  # cameras only, no record
 #   /RGB_Event_cam_system/record_wp1_docker.sh 5 30 my_label  # full recording
 
-RGB_DIR="$HOME/event/RGB_Event_cam_system"
+RGB_DIR="$HOME/eventrec/RGB_Event_cam_system"
 BAGS_DIR="${1:-$HOME/bags}"
 VICON_IP="192.168.2.221"
 HOST_UID="$(id -u)"

@@ -105,9 +105,6 @@ RUN /bin/bash -c "source /opt/ros/noetic/setup.bash \
     && catkin_make -DCMAKE_BUILD_TYPE=Release"
 
 # ── Entrypoint ────────────────────────────────────────────────────────────
-ENTRYPOINT ["/bin/bash", "-c", "\
-mkdir -p /var/run/ueyed && \
-/opt/ids/ueye/bin/ueyeusbd -c /etc/ids/ueye/ueyeusbd.conf -P /var/run/ueyed/ueyeusbd.pid & \
-sleep 3 && \
-source /catkin_ws/devel/setup.bash && \
-exec bash"]
+COPY docker_context/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]

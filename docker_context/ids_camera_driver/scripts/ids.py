@@ -147,11 +147,24 @@ def alloc_and_announce_buffers():
 
 def start_acquisition(exposure_us, gain):
     try:
-        # Set manual exposure and gain BEFORE starting acquisition
-        m_node_map_remote_device.FindNode("ExposureTime").SetValue(float(exposure_us))
+        # Set frame rate first so the camera knows the exposure-time ceiling.
         m_node_map_remote_device.FindNode("AcquisitionFrameRate").SetValue(25.0)
+        m_node_map_remote_device.FindNode("ExposureTime").SetValue(float(exposure_us))
         m_node_map_remote_device.FindNode("Gain").SetValue(float(gain))
-        print(f"ExposureTime={exposure_us}us  Gain={gain}")
+        # Force hardware gamma to 1.0 (linear) so software gamma LUT owns
+        # all correction. If the node is absent, the camera is already linear.
+        try:
+            m_node_map_remote_device.FindNode("Gamma").SetValue(1.0)
+        except Exception:
+            pass
+
+        actual_exp  = m_node_map_remote_device.FindNode("ExposureTime").Value()
+        actual_fps  = m_node_map_remote_device.FindNode("AcquisitionFrameRate").Value()
+        actual_gain = m_node_map_remote_device.FindNode("Gain").Value()
+        pixel_fmt   = m_node_map_remote_device.FindNode("PixelFormat").CurrentEntry().SymbolicValue()
+        print(f"[IDS] PixelFormat={pixel_fmt}  "
+              f"ExposureTime={actual_exp:.0f}us (requested {exposure_us})  "
+              f"FrameRate={actual_fps:.1f}fps  Gain={actual_gain:.2f}")
 
         m_dataStream.StartAcquisition(peak.AcquisitionStartMode_Default, peak.DataStream.INFINITE_NUMBER)
         m_node_map_remote_device.FindNode("TLParamsLocked").SetValue(1)
@@ -163,9 +176,13 @@ def start_acquisition(exposure_us, gain):
     return False
 
 
-def pub_image(width,height, image_pub):
-    index = 0
+def _build_gamma_lut(gamma):
+    inv = 1.0 / gamma
+    return np.array([((i / 255.0) ** inv) * 255 for i in range(256)], dtype=np.uint8)
 
+
+def pub_image(width, height, image_pub, gamma_lut):
+    index = 0
     try:
         while not rospy.is_shutdown():
             
@@ -197,6 +214,8 @@ def pub_image(width,height, image_pub):
             )
             image_processed = image.ConvertTo(ids_peak_ipl.PixelFormatName_RGB8, ids_peak_ipl.ConversionMode_HighQuality)
             image_numpy = image_processed.get_numpy_3D()
+            if gamma_lut is not None:
+                image_numpy = gamma_lut[image_numpy]
             #cv2.imshow("dist img", image_numpy)
             #cv2.waitKey()
             #h,  w = image_numpy.shape[:2]
@@ -247,13 +266,20 @@ def main():
 
     exposure_us = rospy.get_param('~exposure_us', 25000)
     gain        = rospy.get_param('~gain', 1.0)
+    gamma       = rospy.get_param('~gamma', 2.2)
     width  = rospy.get_param('~width',  640)
     height = rospy.get_param('~height', 480)
     peak.Library.Initialize()
 
-    if not open_camera():
-        # error
-        print("unable to open camera")
+    # The uEye daemon may still be uploading firmware when this node starts.
+    # Retry for up to 30 s before giving up.
+    for attempt in range(30):
+        if open_camera():
+            break
+        rospy.logwarn("IDS camera not ready yet (attempt %d/30), retrying in 1 s...", attempt + 1)
+        time.sleep(1)
+    else:
+        rospy.logerr("unable to open IDS camera after 30 attempts")
         sys.exit(-1)
 
     if not prepare_acquisition():
@@ -276,7 +302,8 @@ def main():
         print("unable to start acquisition")
         sys.exit(-5)
 
-    pub_image(width,height, image_pub)
+    gamma_lut = _build_gamma_lut(gamma) if gamma != 1.0 else None
+    pub_image(width, height, image_pub, gamma_lut)
     peak.Library.Close()
 
 
