@@ -9,12 +9,14 @@
 
 RGB_DIR="$HOME/eventrec/RGB_Event_cam_system"
 BAGS_DIR="${1:-$HOME/bags}"
+CALIB_DIR="${CALIB_DIR:-/media/loki/SharedSSD/calibration}"
 VICON_IP="192.168.2.221"
 HOST_UID="$(id -u)"
 HOST_GID="$(id -g)"
 JETSON_IP="$(hostname -I | awk '{print $1}')"
 
 mkdir -p "$BAGS_DIR"
+mkdir -p "$CALIB_DIR"
 
 # Kill any stale camera_driver containers (two instances fight over the USB device)
 docker ps -q --filter "ancestor=camera_driver" | xargs -r docker stop 2>/dev/null || true
@@ -42,8 +44,10 @@ docker run -it --rm \
     -v "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
     -v "/dev/bus/usb:/dev/bus/usb" \
     -v "/run/udev:/run/udev:ro" \
+    -e "CALIB_DIR=/calib" \
     -v "${RGB_DIR}:/RGB_Event_cam_system" \
     -v "${BAGS_DIR}:/bags" \
+    -v "${CALIB_DIR}:/calib" \
     camera_driver
 
 [ -n "$DISPLAY" ] && xhost -local:root
