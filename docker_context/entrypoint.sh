@@ -16,7 +16,7 @@ chmod -R a+rw /dev/bus/usb 2>/dev/null || true
 # Poll until IDS Peak actually sees a device.
 # Re-apply chmod each second to cover freshly re-enumerated USB nodes.
 echo "[entrypoint] Waiting for IDS RGB camera..."
-for i in $(seq 1 30); do
+for i in $(seq 1 5); do
     sleep 1
     chmod -R a+rw /dev/bus/usb 2>/dev/null || true
     n=$(python3 - 2>/dev/null <<'PYEOF'

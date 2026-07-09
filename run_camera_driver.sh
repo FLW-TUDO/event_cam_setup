@@ -9,7 +9,7 @@
 
 RGB_DIR="$HOME/eventrec/RGB_Event_cam_system"
 BAGS_DIR="${1:-$HOME/bags}"
-CALIB_DIR="${CALIB_DIR:-/media/loki/SharedSSD/calibration}"
+CALIB_DIR="${CALIB_DIR:-/mnt/1tb/calibration}"
 VICON_IP="192.168.2.221"
 HOST_UID="$(id -u)"
 HOST_GID="$(id -g)"

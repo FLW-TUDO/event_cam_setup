@@ -104,6 +104,13 @@ RUN /bin/bash -c "source /opt/ros/noetic/setup.bash \
     && cd $WORKSPACE \
     && catkin_make -DCMAKE_BUILD_TYPE=Release"
 
+# ── Python calibration & annotation tools ────────────────────────────────
+RUN pip3 install \
+    scipy \
+    tqdm \
+    trimesh \
+    aprilgrid
+
 # ── Entrypoint ────────────────────────────────────────────────────────────
 COPY docker_context/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
