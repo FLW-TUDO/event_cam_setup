@@ -87,6 +87,9 @@ RUN PYVER=$(python3 -c "import sys; print('cp%d%d' % sys.version_info[:2])") \
 
 ENV GENICAM_GENTL64_PATH=/usr/lib/ids/cti
 
+# Install eventcv for event-based computer vision
+#RUN pip3 install eventcv
+
 # ── Catkin workspace ──────────────────────────────────────────────────────
 ENV WORKSPACE=/catkin_ws
 RUN mkdir -p $WORKSPACE/src
