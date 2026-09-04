@@ -87,6 +87,9 @@ RUN PYVER=$(python3 -c "import sys; print('cp%d%d' % sys.version_info[:2])") \
 
 ENV GENICAM_GENTL64_PATH=/usr/lib/ids/cti
 
+# Install eventcv for event-based computer vision
+#RUN pip3 install eventcv
+
 # ── Catkin workspace ──────────────────────────────────────────────────────
 ENV WORKSPACE=/catkin_ws
 RUN mkdir -p $WORKSPACE/src
@@ -110,6 +113,36 @@ RUN pip3 install \
     tqdm \
     trimesh \
     aprilgrid
+
+
+# ── Additional tools (EventCV against Python 3.8) ────────────────────────────────
+RUN pip3 install --upgrade pip
+
+# Rust Toolchain (required by eventcv)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Build dependencies for eventcv's Rust extension.
+RUN apt-get update && apt-get install -y \
+    pkg-config libssl-dev libudev-dev \
+    libx11-dev libxkbcommon-dev libwayland-dev libxrandr-dev libxi-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip3 install --upgrade cmake
+
+# Build eventcv from source, pinned to v1.0.6, patched for Python 3.8.
+# eventcv's published wheels require Python >=3.9, but Noetic ships 3.8.
+# matching the upstream release build (hdf5, camera, onnx, gpu).
+RUN git clone https://github.com/EventLAB-Team/eventcv.git /tmp/eventcv \
+    && cd /tmp/eventcv \
+    && git checkout 138a00f27c03835539c1ca90839b7dc6ca72b0b5 \
+    && sed -i 's/"abi3-py39"/"abi3-py38"/' crates/eventcv-py/Cargo.toml \
+    && sed -i 's/requires-python = ">=3.9"/requires-python = ">=3.8"/' pyproject.toml \
+    && python3 scripts/fetch_onnxruntime.py --version 1.19.2 || true \
+    && ls python/eventcv/_libs/libonnxruntime.so.1.19.2 \
+    && pip3 install maturin \
+    && maturin build --release -i python3 --compatibility linux \
+    && pip3 install target/wheels/eventcv-*.whl \
+    && cd / && rm -rf /tmp/eventcv
 
 # ── Entrypoint ────────────────────────────────────────────────────────────
 COPY docker_context/entrypoint.sh /entrypoint.sh
