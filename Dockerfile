@@ -137,6 +137,10 @@ RUN git clone https://github.com/EventLAB-Team/eventcv.git /tmp/eventcv \
     && git checkout 138a00f27c03835539c1ca90839b7dc6ca72b0b5 \
     && sed -i 's/"abi3-py39"/"abi3-py38"/' crates/eventcv-py/Cargo.toml \
     && sed -i 's/requires-python = ">=3.9"/requires-python = ">=3.8"/' pyproject.toml \
+    # Viewer requests downlevel limits (max texture 2048), which panics when the window
+    # exceeds 2048px (e.g. EVK4 1280x720 at HiDPI scale 2). Use the adapter's real max size.
+    && sed -i 's/required_limits: wgpu::Limits::downlevel_defaults(),/required_limits: wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits()),/' crates/eventcv-py/src/viewer/gpu.rs \
+    && grep -q 'using_resolution(adapter.limits())' crates/eventcv-py/src/viewer/gpu.rs \
     && python3 scripts/fetch_onnxruntime.py --version 1.19.2 || true \
     && ls python/eventcv/_libs/libonnxruntime.so.1.19.2 \
     && pip3 install maturin \
