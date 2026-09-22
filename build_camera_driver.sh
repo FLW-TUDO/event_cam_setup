@@ -224,7 +224,7 @@ docker buildx build \
     --pull \
     --build-arg TARGETARCH="${TARGET_ARCH}" \
     --build-arg BASE_IMAGE="${BASE_IMAGE}" \
-    -f "$SCRIPT_DIR/Dockerfile_camera_driver" \
+    -f "$SCRIPT_DIR/Dockerfile" \
     -t camera_driver \
     "$SCRIPT_DIR"
 

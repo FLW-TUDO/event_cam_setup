@@ -26,15 +26,21 @@ XAUTH=/tmp/.docker.xauth
 if [ -n "$DISPLAY" ]; then
     xauth nlist "$DISPLAY" 2>/dev/null | sed -e 's/^..../ffff/' | xauth -f "$XAUTH" nmerge - 2>/dev/null || true
     chmod 777 "$XAUTH" 2>/dev/null || true
+    # Allow the container (runs as root) to connect to the local X server.
+    # Needed for the eventcv live viewer; cleaned up on exit below.
+    xhost +local:root 2>/dev/null || true
 fi
 
 docker run -it --rm \
     --privileged \
     --net=host \
     --ipc=host \
+    --device /dev/dri:/dev/dri \
+    --group-add video \
     -e "DISPLAY=${DISPLAY:-}" \
     -e "QT_X11_NO_MITSHM=1" \
     -e "XAUTHORITY=${XAUTH}" \
+    -e "XDG_RUNTIME_DIR=/tmp/runtime-root" \
     -e "ROS_PACKAGE_PATH=/RGB_Event_cam_system:/catkin_ws/src:/opt/ros/noetic/share" \
     -e "VICON_IP=${VICON_IP}" \
     -e "HOST_UID=${HOST_UID}" \
@@ -50,4 +56,5 @@ docker run -it --rm \
     -v "${CALIB_DIR}:/calib" \
     camera_driver
 
-[ -n "$DISPLAY" ] && xhost -local:root
+# Revoke the X access we granted above.
+[ -n "$DISPLAY" ] && xhost -local:root 2>/dev/null || true
