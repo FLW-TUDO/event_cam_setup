@@ -87,9 +87,6 @@ RUN PYVER=$(python3 -c "import sys; print('cp%d%d' % sys.version_info[:2])") \
 
 ENV GENICAM_GENTL64_PATH=/usr/lib/ids/cti
 
-# Install eventcv for event-based computer vision
-#RUN pip3 install eventcv
-
 # ── Catkin workspace ──────────────────────────────────────────────────────
 ENV WORKSPACE=/catkin_ws
 RUN mkdir -p $WORKSPACE/src
@@ -115,38 +112,16 @@ RUN pip3 install \
     aprilgrid
 
 
-# ── Additional tools (EventCV against Python 3.8) ────────────────────────────────
-RUN pip3 install --upgrade pip
-
-# Rust Toolchain (required by eventcv)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Build dependencies for eventcv's Rust extension.
-RUN apt-get update && apt-get install -y \
-    pkg-config libssl-dev libudev-dev \
-    libx11-dev libxkbcommon-dev libwayland-dev libxrandr-dev libxi-dev \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip3 install --upgrade cmake
-
-# Build eventcv from source, pinned to v1.0.6, patched for Python 3.8.
-# eventcv's published wheels require Python >=3.9, but Noetic ships 3.8.
-# matching the upstream release build (hdf5, camera, onnx, gpu).
-RUN git clone https://github.com/EventLAB-Team/eventcv.git /tmp/eventcv \
-    && cd /tmp/eventcv \
-    && git checkout 138a00f27c03835539c1ca90839b7dc6ca72b0b5 \
-    && sed -i 's/"abi3-py39"/"abi3-py38"/' crates/eventcv-py/Cargo.toml \
-    && sed -i 's/requires-python = ">=3.9"/requires-python = ">=3.8"/' pyproject.toml \
-    # Viewer requests downlevel limits (max texture 2048), which panics when the window
-    # exceeds 2048px (e.g. EVK4 1280x720 at HiDPI scale 2). Use the adapter's real max size.
-    && sed -i 's/required_limits: wgpu::Limits::downlevel_defaults(),/required_limits: wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits()),/' crates/eventcv-py/src/viewer/gpu.rs \
-    && grep -q 'using_resolution(adapter.limits())' crates/eventcv-py/src/viewer/gpu.rs \
-    && python3 scripts/fetch_onnxruntime.py --version 1.19.2 || true \
-    && ls python/eventcv/_libs/libonnxruntime.so.1.19.2 \
-    && pip3 install maturin \
-    && maturin build --release -i python3 --compatibility linux \
-    && pip3 install target/wheels/eventcv-*.whl \
-    && cd / && rm -rf /tmp/eventcv
+# ── EventCV (event-camera I/O, live viewer, EVK4 streaming) ──────────────
+# Since v1.0.12 upstream ships cp38-abi3 manylinux_2_28 wheels (x86_64 + aarch64)
+# built with hdf5, camera, onnx and gpu, and includes our former local patches:
+# Python 3.8 support, the viewer HiDPI texture-limit fix, and the
+# EVENTCV_CLOCK_<serial>=internal|master|slave override for EVK4 stereo sync.
+# Focal's pip 20.0.2 predates the manylinux_2_28 tag and would fall back to a
+# source build, so upgrade pip first and invoke it via `python3 -m pip`.
+RUN python3 -m pip install --upgrade pip \
+    && python3 -m pip install eventcv==1.0.12 \
+    && eventcv --version
 
 # ── Entrypoint ────────────────────────────────────────────────────────────
 COPY docker_context/entrypoint.sh /entrypoint.sh
